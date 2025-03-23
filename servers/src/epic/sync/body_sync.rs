@@ -105,7 +105,7 @@ impl BodySync {
 		// 10) max will be 80 if all 8 peers are advertising more work
 		// also if the chain is already saturated with orphans, throttle
 		let block_count = cmp::min(
-			cmp::min(100, peers.len() * 10),
+			cmp::min(100, cmp::max(peers.len(), 1) * 1),
 			chain::MAX_ORPHAN_SIZE.saturating_sub(self.chain.orphans_len()) + 1,
 		);
 
@@ -123,7 +123,7 @@ impl BodySync {
 			let body_head = self.chain.head()?;
 			let header_head = self.chain.header_head()?;
 
-			debug!(
+			info!(
 				"block_sync: {}/{} requesting blocks {:?} from {} peers",
 				body_head.height,
 				header_head.height,
@@ -133,7 +133,7 @@ impl BodySync {
 
 			// reinitialize download tracking state
 			self.blocks_requested = 0;
-			self.receive_timeout = Utc::now() + Duration::seconds(6);
+			self.receive_timeout = Utc::now() + Duration::seconds(120);
 
 			let mut peers_iter = peers.iter();
 			//let mut peers_iter = peers.iter().cycle();
@@ -160,7 +160,7 @@ impl BodySync {
 			// but none received since timeout, ask again
 			let timeout = Utc::now() > self.receive_timeout;
 			if timeout && blocks_received <= self.prev_blocks_received {
-				debug!(
+				warn!(
 					"body_sync: expecting {} more blocks and none received for a while",
 					self.blocks_requested,
 				);
@@ -170,7 +170,7 @@ impl BodySync {
 
 		if blocks_received > self.prev_blocks_received {
 			// some received, update for next check
-			self.receive_timeout = Utc::now() + Duration::seconds(1);
+			self.receive_timeout = Utc::now() + Duration::seconds(120);
 			self.blocks_requested = self
 				.blocks_requested
 				.saturating_sub(blocks_received - self.prev_blocks_received);
@@ -180,7 +180,7 @@ impl BodySync {
 		// off by one to account for broadcast adding a couple orphans
 		if self.blocks_requested < 2 {
 			// no pending block requests, ask more
-			debug!("body_sync: no pending block request, asking more");
+			info!("body_sync: no pending block request, asking more");
 			return Ok(true);
 		}
 

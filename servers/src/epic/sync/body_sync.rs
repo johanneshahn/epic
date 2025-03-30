@@ -150,7 +150,7 @@ impl BodySync {
 						.requested_peers
 						.contains(&(peer.info.addr.clone(), *hash))
 					{
-						error!("Skipped request to {}: already requested", peer.info.addr);
+						debug!("Skipped request to {}: already requested", peer.info.addr);
 						continue;
 					}
 					if let Err(e) = peer.send_block_request(*hash, chain::Options::SYNC) {

@@ -70,13 +70,9 @@ impl StateSync {
 		);
 
 		match self.sync_state.status() {
-			SyncStatus::TxHashsetRangeProofsValidation { .. } => {
-				return false;
-			}
-			SyncStatus::TxHashsetKernelsValidation { .. } => {
-				return false;
-			}
-			SyncStatus::TxHashsetDone => {
+			SyncStatus::TxHashsetDone
+			| SyncStatus::TxHashsetKernelsValidation { .. }
+			| SyncStatus::TxHashsetRangeProofsValidation { .. } => {
 				return false;
 			}
 			_ => {}

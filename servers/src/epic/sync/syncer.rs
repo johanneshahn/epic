@@ -401,7 +401,10 @@ impl SyncRunner {
 			}
 
 			match self.sync_state.status() {
-				SyncStatus::Shutdown => continue,
+				SyncStatus::Shutdown => {
+					download_headers = false;
+					continue;
+				}
 
 				SyncStatus::TxHashsetDownload { .. }
 				| SyncStatus::TxHashsetSetup

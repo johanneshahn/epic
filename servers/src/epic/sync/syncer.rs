@@ -399,8 +399,25 @@ impl SyncRunner {
 				| SyncStatus::TxHashsetSetup
 				| SyncStatus::TxHashsetRangeProofsValidation { .. }
 				| SyncStatus::TxHashsetKernelsValidation { .. }
-				| SyncStatus::TxHashsetSave
-				| SyncStatus::TxHashsetDone => check_state_sync = true,
+				| SyncStatus::TxHashsetSave => check_state_sync = true,
+				SyncStatus::TxHashsetDone => {
+					// if we are done with txhashset sync, we can start header sync
+					// reset sync head to header_head
+					// and start header sync
+					let sync_head = self.chain.get_sync_head().unwrap();
+					info!(
+						"Check transition to HeaderSync. Head {} at {}, resetting to: {} at {}",
+						sync_head.hash(),
+						sync_head.height,
+						header_head.hash(),
+						header_head.height,
+					);
+					// Rebuild the sync MMR to match our updated sync_head.
+					let _ = self.chain.rebuild_sync_mmr(&header_head);
+					//asking peers for headers and start header sync tasks
+					download_headers = true;
+					continue;
+				}
 				SyncStatus::AwaitingPeers(_) => {
 					//apply only on startup
 					if !download_headers {
@@ -475,6 +492,7 @@ impl SyncRunner {
 				}
 			}
 
+			//txhashset download
 			if check_state_sync {
 				state_sync.check_run(&header_head, &head, &tail, highest_network_height);
 			}

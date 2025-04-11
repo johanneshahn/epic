@@ -411,6 +411,7 @@ impl SyncRunner {
 				| SyncStatus::TxHashsetRangeProofsValidation { .. }
 				| SyncStatus::TxHashsetKernelsValidation { .. }
 				| SyncStatus::TxHashsetSave => txhashset_sync = true,
+
 				SyncStatus::TxHashsetDone => {
 					// if we are done with txhashset sync, we can start header sync
 					// reset sync head to header_head
@@ -425,7 +426,7 @@ impl SyncRunner {
 					);
 					// Rebuild the sync MMR to match our updated sync_head.
 					let _ = self.chain.rebuild_sync_mmr(&header_head);
-					//asking peers for headers and start header sync tasks
+					// Asking peers for headers and start header sync tasks
 					download_headers = true;
 
 					self.sync_state.update(SyncStatus::HeaderSync {
@@ -435,38 +436,38 @@ impl SyncRunner {
 
 					continue;
 				}
+
 				SyncStatus::AwaitingPeers(_) => {
-					//apply only on startup
+					// Log when AwaitingPeers is active
+
+					info!(
+						"Sync status: AwaitingPeers. Waiting for min preferred peers to connect...",
+					);
+
+					// Apply only on startup
 					if !download_headers {
 						let sync_head = self.chain.get_sync_head().unwrap();
 						info!(
-        					"Initial transition to HeaderSync. Head {} at {}, resetting to: {} at {}",
-        					sync_head.hash(),
-        					sync_head.height,
-        					header_head.hash(),
-        					header_head.height,
-        				);
+							"Initial transition to HeaderSync. Head {} at {}, resetting to: {} at {}",
+							sync_head.hash(),
+							sync_head.height,
+							header_head.hash(),
+							header_head.height,
+						);
 						let _ = self.chain.reset_sync_head();
 
 						// Rebuild the sync MMR to match our updated sync_head.
 						let _ = self.chain.rebuild_sync_mmr(&header_head);
-						//asking peers for headers and start header sync tasks
+						// Asking peers for headers and start header sync tasks
 						download_headers = true;
 					}
 				}
-				_ => {
-					// skip body sync if header chain is not synced.
-					if header_head.height < highest_network_height {
-						/*warn!(
-							">>> DEFAULT_CASE portion of sync_state, continue case met. header_height({}), highest_network_height({})",
-							header_head.height,
-							highest_network_height
-						);
-						warn!("<<< sync_state({:?})", self.sync_state.status());*/
 
+				_ => {
+					// Skip body sync if header chain is not synced.
+					if header_head.height < highest_network_height {
 						match self.sync_state.status() {
 							SyncStatus::BodySync { .. } => {
-								//download_headers = true;
 								match self.chain.reset_sync_head() {
 									Ok(_) => (),
 									Err(e) => {
@@ -476,20 +477,18 @@ impl SyncRunner {
 										);
 									}
 								}
-								{
-									if !self.chain.clear_orphans() {
-										error!(
-											"Failed to fully clear ophan hashmap, continuing anyway!"
-										);
-									}
-								} // scope for RwLock
+								if !self.chain.clear_orphans() {
+									error!(
+										"Failed to fully clear orphan hashmap, continuing anyway!"
+									);
+								}
 							}
 							_ => {}
 						}
 						continue;
 					}
 
-					//if all headers synced close pending header sync tasks and stop asking peers
+					// If all headers are synced, close pending header sync tasks and stop asking peers
 					download_headers = false;
 					for header_sync in header_syncs.clone() {
 						let _ = header_sync.1.send(false);

@@ -188,6 +188,7 @@ impl BodySync {
 					"Block Sync: expecting {} more blocks and none received for a while.",
 					self.blocks_requested,
 				);
+				self.hashes_to_get.clear();
 				return Ok(true);
 			}
 		}

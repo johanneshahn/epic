@@ -427,6 +427,12 @@ impl SyncRunner {
 					let _ = self.chain.rebuild_sync_mmr(&header_head);
 					//asking peers for headers and start header sync tasks
 					download_headers = true;
+
+					self.sync_state.update(SyncStatus::HeaderSync {
+						current_height: header_head.height,
+						highest_height: highest_network_height,
+					});
+
 					continue;
 				}
 				SyncStatus::AwaitingPeers(_) => {

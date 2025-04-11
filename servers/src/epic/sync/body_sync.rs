@@ -137,19 +137,25 @@ impl BodySync {
 				(((total_blocks - remaining_blocks) as f64 / total_blocks as f64) * 10_000.0)
 					.trunc() / 100.0;
 
+			// Berechne die maximale Breite basierend auf der Anzahl der Stellen
+			let max_width = remaining_blocks
+				.to_string()
+				.len()
+				.max(hashes_to_get.len().to_string().len());
+
 			info!(
-				"Block Sync: Requested {} more block(s), {} block(s) remaining, {:.2}% completed",
+				"Block Sync: Requested {:>width$} more block(s), {:>width$} block(s) remaining, {:>6.2}% completed",
 				hashes_to_get.len(),
 				remaining_blocks,
-				percentage_synced
+				percentage_synced,
+				width = max_width // Dynamische Breite
 			);
 
-			// reinitialize download tracking state
+			// Reinitialize download tracking state
 			self.blocks_requested = 0;
 			self.receive_timeout = Utc::now() + Duration::seconds(120);
 
 			let mut peers_iter = peers.iter();
-			//let mut peers_iter = peers.iter().cycle();
 			for hash in hashes_to_get.clone() {
 				while let Some(peer) = peers_iter.next() {
 					if self

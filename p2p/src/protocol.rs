@@ -463,7 +463,7 @@ impl MessageHandler for Protocol {
 					}
 
 					info!(
-						"Txhashset archive: {}/{} ... DONE from peer {}",
+						"Txhashset archive: {}/{} ... DOWNLOAD DONE from peer {}",
 						downloaded_size, total_size, self.peer_info.addr
 					);
 					tmp_zip

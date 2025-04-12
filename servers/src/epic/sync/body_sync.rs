@@ -60,6 +60,15 @@ impl BodySync {
 		head: &chain::Tip,
 		highest_height: u64,
 	) -> Result<bool, chain::Error> {
+		match self.sync_state.status() {
+			SyncStatus::TxHashsetSetup
+			| SyncStatus::TxHashsetKernelsValidation { .. }
+			| SyncStatus::TxHashsetRangeProofsValidation { .. } => {
+				return Ok(false);
+			}
+			_ => {}
+		}
+
 		if self.body_sync_due()? {
 			if self.body_sync()? {
 				return Ok(true);
@@ -149,7 +158,7 @@ impl BodySync {
 					.any(|(addr, _)| addr == &peer.info.addr)
 			}) {
 				if let Err(e) = peer.send_block_request(hash, chain::Options::SYNC) {
-					error!("Skipped request to {}: {:?}", peer.info.addr, e);
+					debug!("Skipped request to {}: {:?}", peer.info.addr, e);
 					peer.stop();
 				} else {
 					self.blocks_requested += 1;

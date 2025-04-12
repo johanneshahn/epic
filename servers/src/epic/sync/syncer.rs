@@ -218,6 +218,8 @@ impl SyncRunner {
 			let head = unwrap_or_restart_loop!(self.chain.head());
 			let tail = self.chain.tail().unwrap_or_else(|_| head.clone());
 			let header_head = unwrap_or_restart_loop!(self.chain.header_head());
+
+			#[allow(unused_assignments)]
 			let mut txhashset_sync = false;
 			// run each sync stage, each of them deciding whether they're needed
 			// except for state sync that only runs if body sync return true (means txhashset is needed)
@@ -413,6 +415,25 @@ impl SyncRunner {
 				| SyncStatus::TxHashsetSave => txhashset_sync = true,
 
 				SyncStatus::TxHashsetDone => {
+					// if txhashset is downloaded replaced with own txhashet we go to body sync.
+					// because download and validatet requires very long we missed new headers
+
+					// Update highest_network_height before transitioning to HeaderSync
+					let (_needs_syncing, most_work_height) =
+						unwrap_or_restart_loop!(self.needs_syncing());
+
+					if most_work_height > 0 {
+						highest_network_height = most_work_height;
+						info!(
+							"Updated highest_network_height to {} before transitioning to HeaderSync",
+							highest_network_height
+						);
+					} else {
+						warn!(
+							"Failed to update highest_network_height, keeping previous value: {}",
+							highest_network_height
+						);
+					}
 					// if we are done with txhashset sync, we can start header sync
 					// reset sync head to header_head
 					// and start header sync
@@ -424,13 +445,17 @@ impl SyncRunner {
 						header_head.hash(),
 						header_head.height,
 					);
+
+					let _ = self.chain.reset_sync_head();
+
 					// Rebuild the sync MMR to match our updated sync_head.
 					let _ = self.chain.rebuild_sync_mmr(&header_head);
 					// Asking peers for headers and start header sync tasks
-					download_headers = true;
+					download_headers = false;
+					txhashset_sync = false;
 
-					self.sync_state.update(SyncStatus::HeaderSync {
-						current_height: header_head.height,
+					self.sync_state.update(SyncStatus::BodySync {
+						current_height: head.height,
 						highest_height: highest_network_height,
 					});
 

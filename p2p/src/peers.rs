@@ -276,17 +276,25 @@ impl Peers {
 	pub fn disconnect_peer(&self, peer_addr: PeerAddr) -> Result<(), Error> {
 		match self.get_connected_peer(peer_addr) {
 			Some(peer) => {
-				warn!("Disconnect peer {}", peer_addr);
-				// setting peer status will get it removed at the next clean_peer
+				warn!("Disconnecting peer {}", peer_addr);
+
+				// Stoppe die Verbindung zum Peer
 				peer.stop();
+
+				// Setze den Zeitstempel für "zuletzt gesehen" zurück
+				let mut live_info = peer.info.live_info.write();
+				live_info.last_seen = Utc::now();
+
+				// Entferne den Peer aus der Liste der verbundenen Peers
 				let mut peers = self.peers.try_write_for(LOCK_TIMEOUT).ok_or_else(|| {
 					debug!("disconnect_peer: failed to get peers lock");
 					Error::PeerException
 				})?;
 				peers.remove(&peer.info.addr);
+
 				Ok(())
 			}
-			None => return Err(Error::PeerNotFound),
+			None => Err(Error::PeerNotFound),
 		}
 	}
 
@@ -381,7 +389,7 @@ impl Peers {
 				let mut peers = match self.peers.try_write_for(LOCK_TIMEOUT) {
 					Some(peers) => peers,
 					None => {
-						debug!("check_all: failed to get peers lock");
+						debug!("check_all: failed to get peers lock: {:?}", e);
 						break;
 					}
 				};

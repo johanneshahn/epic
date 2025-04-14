@@ -181,10 +181,16 @@ impl SyncRunner {
 				// we can occasionally get a most work height of 0 if read locks fail
 				highest_network_height = most_work_height;
 			}
-
+			let sleep_duration = match self.sync_state.status() {
+				SyncStatus::HeaderSync { .. }
+				| SyncStatus::Initial
+				| SyncStatus::BodySync { .. } => time::Duration::from_millis(50),
+				_ => time::Duration::from_secs(10),
+			};
 			//sync_slots = highest_network_height / sync_slot_size as u64;
 			//info!("current sync_slots: {:?}", sync_slots);
 			// quick short-circuit (and a decent sleep) if no syncing is needed
+
 			if !needs_syncing {
 				if currently_syncing {
 					self.sync_state.update(SyncStatus::NoSync);
@@ -204,14 +210,14 @@ impl SyncRunner {
 					}
 				}
 				continue;
+			} else if self.sync_state.status() == SyncStatus::NoSync {
+				warn!("Node is out of sync, switching to syncing mode");
+				self.sync_state.update(SyncStatus::AwaitingPeers(true));
+				download_headers = true;
+
+				continue;
 			}
 
-			let sleep_duration = match self.sync_state.status() {
-				SyncStatus::HeaderSync { .. }
-				| SyncStatus::Initial
-				| SyncStatus::BodySync { .. } => time::Duration::from_millis(50),
-				_ => time::Duration::from_secs(10),
-			};
 			thread::sleep(sleep_duration);
 
 			// if syncing is needed
@@ -452,7 +458,6 @@ impl SyncRunner {
 					let _ = self.chain.rebuild_sync_mmr(&header_head);
 					// Asking peers for headers and start header sync tasks
 					download_headers = false;
-					txhashset_sync = false;
 
 					self.sync_state.update(SyncStatus::BodySync {
 						current_height: head.height,
@@ -463,8 +468,6 @@ impl SyncRunner {
 				}
 
 				SyncStatus::AwaitingPeers(_) => {
-					// Log when AwaitingPeers is active
-
 					info!(
 						"Sync status: AwaitingPeers. Waiting for min preferred peers to connect...",
 					);
@@ -473,12 +476,12 @@ impl SyncRunner {
 					if !download_headers {
 						let sync_head = self.chain.get_sync_head().unwrap();
 						info!(
-							"Initial transition to HeaderSync. Head {} at {}, resetting to: {} at {}",
-							sync_head.hash(),
-							sync_head.height,
-							header_head.hash(),
-							header_head.height,
-						);
+								"Initial transition to HeaderSync. Head {} at {}, resetting to: {} at {}",
+								sync_head.hash(),
+								sync_head.height,
+								header_head.hash(),
+								header_head.height,
+							);
 						let _ = self.chain.reset_sync_head();
 
 						// Rebuild the sync MMR to match our updated sync_head.

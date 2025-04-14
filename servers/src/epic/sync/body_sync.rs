@@ -33,6 +33,7 @@ pub struct BodySync {
 	prev_blocks_received: u64,
 	requested_peers: std::collections::HashSet<(PeerAddr, Hash)>,
 	hashes_to_get: Vec<Hash>,
+	hash_request_timestamps: std::collections::HashMap<Hash, DateTime<Utc>>, // Zeitstempel für Hash-Anfragen
 }
 
 impl BodySync {
@@ -49,7 +50,8 @@ impl BodySync {
 			receive_timeout: Utc::now(),
 			prev_blocks_received: 0,
 			requested_peers: std::collections::HashSet::new(),
-			hashes_to_get: Vec::new(), // Initialize as empty
+			hashes_to_get: Vec::new(),
+			hash_request_timestamps: std::collections::HashMap::new(), // Initialisiere als leer
 		}
 	}
 
@@ -76,7 +78,7 @@ impl BodySync {
 
 			self.sync_state.update(SyncStatus::BodySync {
 				current_height: head.height,
-				highest_height: highest_height,
+				highest_height,
 			});
 		}
 		Ok(false)
@@ -151,6 +153,17 @@ impl BodySync {
 
 		let mut peers_iter = peers.iter();
 		for hash in self.hashes_to_get.clone() {
+			// Überprüfe, ob der Hash bereits angefordert wurde und ob der Timeout überschritten ist
+			let should_request = match self.hash_request_timestamps.get(&hash) {
+				Some(timestamp) => Utc::now() > *timestamp + Duration::seconds(5), // 30 Sekunden Timeout
+				None => true, // Hash wurde noch nicht angefordert
+			};
+
+			if !should_request {
+				debug!("Hash {:?} is already requested recently, skipping.", hash);
+				continue;
+			}
+
 			if let Some(peer) = peers_iter.find(|peer| {
 				!self
 					.requested_peers
@@ -163,10 +176,11 @@ impl BodySync {
 				} else {
 					self.blocks_requested += 1;
 					self.requested_peers.insert((peer.info.addr.clone(), hash));
+					self.hash_request_timestamps.insert(hash, Utc::now()); // Aktualisiere den Zeitstempel
 				}
 			} else {
-				debug!("No available peers to request hash {}", hash);
-				break; // Break the loop if all available peers are requested
+				//debug!("No available peers to request hash {}", hash);
+				continue;
 			}
 		}
 
@@ -188,30 +202,36 @@ impl BodySync {
 	fn body_sync_due(&mut self) -> Result<bool, chain::Error> {
 		let blocks_received = self.blocks_received()?;
 
-		// some blocks have been requested
+		// Wenn Blöcke angefordert wurden, aber keine empfangen wurden, starte neu
 		if self.blocks_requested > 0 {
-			// but none received since timeout, ask again
 			let timeout = Utc::now() > self.receive_timeout;
 			if timeout && blocks_received <= self.prev_blocks_received {
 				warn!(
-					"Block Sync: expecting {} more blocks and none received for a while.",
+					"Block Sync: expecting {} more blocks and none received for a while. Resetting state.",
 					self.blocks_requested,
 				);
+
+				// Listen zurücksetzen
 				self.hashes_to_get.clear();
+				self.requested_peers.clear();
+				self.hash_request_timestamps.clear();
+				self.blocks_requested = 0;
+				self.prev_blocks_received = 0;
+
+				// Synchronisierung erneut starten
 				return Ok(true);
 			}
 		}
 
+		// Aktualisiere den Status, wenn Blöcke empfangen wurden
 		if blocks_received > self.prev_blocks_received {
-			// some received, update for next check
-
 			self.blocks_requested = self
 				.blocks_requested
 				.saturating_sub(blocks_received - self.prev_blocks_received);
 			self.prev_blocks_received = blocks_received;
 		}
 
-		// Check if a peer is available for new request
+		// Überprüfe, ob ein Peer verfügbar ist, um neue Anfragen zu senden
 		if self.peers.more_work_peers()?.iter().any(|peer| {
 			self.requested_peers
 				.iter()
@@ -239,6 +259,7 @@ impl BodySync {
 
 		for (peer_addr, hash) in received_hashes {
 			self.requested_peers.remove(&(peer_addr, hash));
+			self.hash_request_timestamps.remove(&hash); // Entferne den Zeitstempel
 		}
 
 		Ok(blocks_received)
